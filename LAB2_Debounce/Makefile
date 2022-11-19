@@ -142,7 +142,15 @@ ACDS_VERSION := 15.1
 ELF := LAB2_Debounce.elf
 
 # Paths to C, C++, and assembly source files.
-C_SRCS := hello_world.c
+C_SRCS += hello_world.c
+C_SRCS += fatfs.c
+C_SRCS += fatfs_diskio.c
+C_SRCS += fatfs_nios2_de0_nano_spi.c
+C_SRCS += fatfs_nios2_de1_pio.c
+C_SRCS += fatfs_nios2_de1_spi.c
+C_SRCS += ff.c
+C_SRCS += monitor.c
+C_SRCS += uart_nios2.c
 CXX_SRCS :=
 ASM_SRCS :=
 
