@@ -1,0 +1,3 @@
+nios2-terminal: Unable to connect to JTAG UART because another application
+nios2-terminal: is using it (or is using something else which clashes). Please close
+nios2-terminal: the other application and try again.
