@@ -633,6 +633,32 @@ int main()
     xprintf("total of %d wav files found.\n", num_wav_files);
 
     int i;
+    paused = 1;
+    track_num = 0;
+    display(track_num, STOPPED);
+    while(1) {
+        while(paused) {
+            if (next) {
+                next = 0;
+                track_num += 1;
+                if (track_num >= num_wav_files) {
+                    track_num -= num_wav_files;
+                }
+                display(track_num, STOPPED);
+            }
+            if (prev) {
+                prev = 0;
+                track_num -= 1;
+                if (track_num < 0) {
+                    track_num += num_wav_files;
+                }
+                display(track_num, STOPPED);
+            }
+        };
+        play(track_num, &fnames[track_num][0], lengths[track_num], audio_dev);
+        paused = 1;
+        display(track_num, STOPPED);
+    }
     for (track_num = 0; track_num < num_wav_files; track_num++)
     {
         xprintf("file %d: %s, length: %lu\n", track_num, &fnames[track_num][0], lengths[track_num]);
