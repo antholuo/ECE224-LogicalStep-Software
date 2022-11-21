@@ -24,20 +24,21 @@ static int button_click = 0;
 static void button_ISR(void *context, alt_u32 id)
 {
   // isr code here
-  if (button_click == 0)
-  {
-    IOWR(TIMER_0_BASE, 1, 0b0111);
-    printf("button hit\n");
-    button_click = 1;
-    IOWR(BUTTON_PIO_BASE, 3, 0x0);
-  }
+  // disable button interrupts
+  static int counter = 0;
+  IOWR(BUTTON_PIO_BASE, 2, 0x0);
+  IOWR(TIMER_0_BASE, 1, 0b0111);
+  printf("button hit %d\n", counter);
+  counter += 1;
+  IOWR(BUTTON_PIO_BASE, 3, 0x0);
   //   clear interrupt
 }
 
 static void timer_ISR(void *context, alt_u32 id)
 {
   // timer isr code here
-  button_click = 0;
+  IOWR(BUTTON_PIO_BASE, 3, 0x0);
+  IOWR(BUTTON_PIO_BASE, 2, 0xf);
   printf("timer isr hit \n");
   // clear timer TO
   IOWR(TIMER_0_BASE, 0, 0x0);
