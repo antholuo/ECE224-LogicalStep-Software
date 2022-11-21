@@ -88,7 +88,7 @@ static void button_ISR(void *context, alt_u32 id)
     { // next
         inputs = 1;
         next = 1;
-        stopped = 1;
+        // stopped = 1;
     }
     if (buttons == 0b1101)
     { // play/pause
@@ -117,7 +117,7 @@ static void button_ISR(void *context, alt_u32 id)
     { // prev
         inputs = 4;
         prev = 1;
-        stopped = 1;
+        // stopped = 1;
     }
     // start the timer
     IOWR(TIMER_0_BASE, 1, 0b0111);
@@ -436,7 +436,7 @@ int play(int index, char *fname, unsigned long p1, alt_up_audio_dev *audio_dev)
                 // do not play while paused
                 while (paused)
                 {
-                    if (stopped)
+                    if (stopped || next || prev)
                     {
                         stopped = 0;
                         playing = 0;
@@ -453,7 +453,11 @@ int play(int index, char *fname, unsigned long p1, alt_up_audio_dev *audio_dev)
                     paused = 1;
                     return 0;
                 }
-
+                if (next || prev)
+                {
+                    playing = 1;
+                    return 0;
+                }
                 int fifospace = alt_up_audio_write_fifo_space(audio_dev, ALT_UP_AUDIO_RIGHT);
                 if (fifospace > 0)
                 {
@@ -474,7 +478,7 @@ int play(int index, char *fname, unsigned long p1, alt_up_audio_dev *audio_dev)
                 // do not play while paused
                 while (paused)
                 {
-                    if (stopped)
+                    if (stopped || next || prev)
                     {
                         stopped = 0;
                         playing = 0;
@@ -487,6 +491,11 @@ int play(int index, char *fname, unsigned long p1, alt_up_audio_dev *audio_dev)
                     stopped = 0;
                     playing = 0;
                     paused = 1;
+                    return 0;
+                }
+                if (next || prev)
+                {
+                    playing = 1;
                     return 0;
                 }
 
@@ -514,7 +523,7 @@ int play(int index, char *fname, unsigned long p1, alt_up_audio_dev *audio_dev)
                 // do not play while paused
                 while (paused)
                 {
-                    if (stopped)
+                    if (stopped || prev || next)
                     {
                         stopped = 0;
                         playing = 0;
@@ -527,6 +536,11 @@ int play(int index, char *fname, unsigned long p1, alt_up_audio_dev *audio_dev)
                     stopped = 0;
                     playing = 0;
                     paused = 1;
+                    return 0;
+                }
+                if (next || prev)
+                {
+                    playing = 1;
                     return 0;
                 }
 
@@ -550,7 +564,7 @@ int play(int index, char *fname, unsigned long p1, alt_up_audio_dev *audio_dev)
                 // do not play while paused
                 while (paused)
                 {
-                    if (stopped)
+                    if (stopped || prev || next)
                     {
                         stopped = 0;
                         playing = 0;
@@ -563,6 +577,10 @@ int play(int index, char *fname, unsigned long p1, alt_up_audio_dev *audio_dev)
                     stopped = 0;
                     playing = 0;
                     paused = 1;
+                    return 0;
+                }
+                else if (next || prev)
+                {
                     return 0;
                 }
 
@@ -578,6 +596,7 @@ int play(int index, char *fname, unsigned long p1, alt_up_audio_dev *audio_dev)
             }
             break;
 
+            playing = 0;
             return 0;
         }
     }
@@ -636,26 +655,58 @@ int main()
     paused = 1;
     track_num = 0;
     display(track_num, STOPPED);
-    while(1) {
-        while(paused) {
-            if (next) {
+    while (1)
+    {
+        while (paused)
+        {
+            if (next)
+            {
                 next = 0;
                 track_num += 1;
-                if (track_num >= num_wav_files) {
+                if (track_num >= num_wav_files)
+                {
                     track_num -= num_wav_files;
                 }
                 display(track_num, STOPPED);
             }
-            if (prev) {
+            if (prev)
+            {
                 prev = 0;
                 track_num -= 1;
-                if (track_num < 0) {
+                if (track_num < 0)
+                {
                     track_num += num_wav_files;
                 }
                 display(track_num, STOPPED);
             }
         };
         play(track_num, &fnames[track_num][0], lengths[track_num], audio_dev);
+        while (playing)
+        {
+            printf("continue playing?");
+            stopped = 0;
+            paused = 0;
+            if (next)
+            {
+                next = 0;
+                track_num += 1;
+                if (track_num >= num_wav_files)
+                {
+                    track_num -= num_wav_files;
+                }
+                play(track_num, &fnames[track_num][0], lengths[track_num], audio_dev);
+            }
+            if (prev)
+            {
+                prev = 0;
+                track_num -= 1;
+                if (track_num < 0)
+                {
+                    track_num += num_wav_files;
+                }
+                play(track_num, &fnames[track_num][0], lengths[track_num], audio_dev);
+            }
+        }
         paused = 1;
         display(track_num, STOPPED);
     }
@@ -663,7 +714,9 @@ int main()
     {
         xprintf("file %d: %s, length: %lu\n", track_num, &fnames[track_num][0], lengths[track_num]);
         play(track_num, &fnames[track_num][0], lengths[track_num], audio_dev);
-        while(paused) {};
+        while (paused)
+        {
+        };
     }
 
     return 0;
