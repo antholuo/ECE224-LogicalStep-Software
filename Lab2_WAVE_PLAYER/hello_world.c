@@ -21,6 +21,7 @@
 
 #include <system.h>
 #include <sys/alt_alarm.h>
+#include <sys/alt_irq.h>
 #include <io.h>
 
 #include "fatfs.h"
@@ -32,6 +33,7 @@
 
 #include "alt_types.h"
 
+#include <altera_avalon_pio_regs.h>
 #include <altera_up_avalon_audio.h>
 #include <altera_up_avalon_audio_and_video_config.h>
 
@@ -65,6 +67,34 @@ uint8_t playing, stopped, half_speed, double_speed, stereo, mono, next, previous
 static alt_alarm alarm;
 static unsigned long Systick = 0;
 static volatile unsigned short Timer; /* 1000Hz increment timer */
+
+static void button_ISR(void *context, alt_u32 id)
+{
+    // isr code here
+    // disable button interrupts
+    IOWR(BUTTON_PIO_BASE, 2, 0x0);
+
+    // start the timer
+    IOWR(TIMER_0_BASE, 1, 0b0111);
+
+    // clear interrupt reg
+    IOWR(BUTTON_PIO_BASE, 3, 0x0);
+}
+
+static void timer_ISR(void *context, alt_u32 id)
+{
+    // timer isr code here
+
+    // clear button int reg
+    IOWR(BUTTON_PIO_BASE, 3, 0x0);
+
+    // re-enable button irq
+    IOWR(BUTTON_PIO_BASE, 2, 0xf);
+    printf("timer isr hit \n");
+    // clear timer TO
+    IOWR(TIMER_0_BASE, 0, 0x0);
+    IOWR(TIMER_0_BASE, 1, 0b1011);
+}
 
 static alt_u32 TimerFunction(void *context)
 {
@@ -116,52 +146,75 @@ FIL File1, File2;                               /* File objects */
 DIR Dir;                                        /* Directory object */
 uint8_t Buff[8192] __attribute__((aligned(4))); /* Working buffer */
 
-static FRESULT scan_files(char *path) {
-	DIR dirs;
-	FRESULT res;
-	uint8_t i;
-	char *fn;
+static FRESULT scan_files(char *path)
+{
+    DIR dirs;
+    FRESULT res;
+    uint8_t i;
+    char *fn;
 
-	if ((res = f_opendir(&dirs, path)) == FR_OK) {
-		i = (uint8_t) strlen(path);
-		while (((res = f_readdir(&dirs, &Finfo)) == FR_OK) && Finfo.fname[0]) {
-			if (_FS_RPATH && Finfo.fname[0] == '.')
-				continue;
+    if ((res = f_opendir(&dirs, path)) == FR_OK)
+    {
+        i = (uint8_t)strlen(path);
+        while (((res = f_readdir(&dirs, &Finfo)) == FR_OK) && Finfo.fname[0])
+        {
+            if (_FS_RPATH && Finfo.fname[0] == '.')
+                continue;
 #if _USE_LFN
-			fn = *Finfo.lfname ? Finfo.lfname : Finfo.fname;
+            fn = *Finfo.lfname ? Finfo.lfname : Finfo.fname;
 #else
-			fn = Finfo.fname;
+            fn = Finfo.fname;
 #endif
-			if (Finfo.fattrib & AM_DIR) {
-				acc_dirs++;
-				*(path + i) = '/';
-				strcpy(path + i + 1, fn);
-				res = scan_files(path);
-				*(path + i) = '\0';
-				if (res != FR_OK)
-					break;
-			} else {
-				acc_files++;
-				acc_size += Finfo.fsize;
-			}
-		}
-	}
+            if (Finfo.fattrib & AM_DIR)
+            {
+                acc_dirs++;
+                *(path + i) = '/';
+                strcpy(path + i + 1, fn);
+                res = scan_files(path);
+                *(path + i) = '\0';
+                if (res != FR_OK)
+                    break;
+            }
+            else
+            {
+                acc_files++;
+                acc_size += Finfo.fsize;
+            }
+        }
+    }
 
-	return res;
+    return res;
 }
 
-static void put_rc(FRESULT rc) {
-	const char *str = "OK\0" "DISK_ERR\0" "INT_ERR\0" "NOT_READY\0" "NO_FILE\0" "NO_PATH\0"
-			"INVALID_NAME\0" "DENIED\0" "EXIST\0" "INVALID_OBJECT\0" "WRITE_PROTECTED\0"
-			"INVALID_DRIVE\0" "NOT_ENABLED\0" "NO_FILE_SYSTEM\0" "MKFS_ABORTED\0" "TIMEOUT\0"
-			"LOCKED\0" "NOT_ENOUGH_CORE\0" "TOO_MANY_OPEN_FILES\0";
-	FRESULT i;
+static void put_rc(FRESULT rc)
+{
+    const char *str = "OK\0"
+                      "DISK_ERR\0"
+                      "INT_ERR\0"
+                      "NOT_READY\0"
+                      "NO_FILE\0"
+                      "NO_PATH\0"
+                      "INVALID_NAME\0"
+                      "DENIED\0"
+                      "EXIST\0"
+                      "INVALID_OBJECT\0"
+                      "WRITE_PROTECTED\0"
+                      "INVALID_DRIVE\0"
+                      "NOT_ENABLED\0"
+                      "NO_FILE_SYSTEM\0"
+                      "MKFS_ABORTED\0"
+                      "TIMEOUT\0"
+                      "LOCKED\0"
+                      "NOT_ENOUGH_CORE\0"
+                      "TOO_MANY_OPEN_FILES\0";
+    FRESULT i;
 
-	for (i = 0; i != rc && *str; i++) {
-		while (*str++)
-			;
-	}
-	xprintf("rc=%u FR_%s\n", (uint32_t) rc, str);
+    for (i = 0; i != rc && *str; i++)
+    {
+        while (*str++)
+            ;
+    }
+    xprintf("rc=%u FR_%s\n", (uint32_t)rc, str);
 }
 
 int isWav(char *filename)
@@ -374,6 +427,27 @@ int main()
     static const uint8_t ft[] = {0, 12, 16, 32};
     uint32_t ofs = 0, sect = 0, blk[2];
     FATFS *fs;
+
+    // register button irq
+    alt_irq_register(BUTTON_PIO_IRQ, (void *)0, button_ISR);
+
+    // clear button reg
+    IOWR(BUTTON_PIO_BASE, 3, 0x0);
+
+    // enable button irq
+    IOWR(BUTTON_PIO_BASE, 2, 0xf);
+
+    // write timer periods
+    IOWR(TIMER_0_BASE, 2, 0xffff);
+    IOWR(TIMER_0_BASE, 3, 0x00ff);
+    IOWR(TIMER_0_BASE, 4, 0x0000);
+    IOWR(TIMER_0_BASE, 5, 0x0000);
+
+    // set timer cont 0, IRQ en
+    IOWR(TIMER_0_BASE, 1, 0x3);
+
+    // register timer IRQ
+    alt_irq_register(TIMER_0_IRQ, (void *)0, timer_ISR);
 
     alt_up_audio_dev *audio_dev;
     unsigned int l_buf;
