@@ -62,7 +62,9 @@ typedef struct wav_file
 } WAV_FILE;
 
 // a bunch of defs
-uint8_t playing, stopped, half_speed, double_speed, stereo, mono, next, previous;
+uint8_t playing, stopped, paused, half_speed, double_speed, stereo, mono, next, previous;
+int inputs = 0;
+int track_num;
 
 static alt_alarm alarm;
 static unsigned long Systick = 0;
@@ -73,7 +75,40 @@ static void button_ISR(void *context, alt_u32 id)
     // isr code here
     // disable button interrupts
     IOWR(BUTTON_PIO_BASE, 2, 0x0);
-
+    int buttons = IORD(BUTTON_PIO_BASE, 0);
+    if (buttons == 0b1110)
+    { // next
+        inputs = 1;
+        next = 1;
+        stopped = 1;
+    }
+    if (buttons == 0b1101)
+    { // play/pause
+        inputs = 2;
+        if (paused)
+        {
+            paused = 0;
+            playing = 1;
+        }
+        else
+        {
+            paused = 1;
+            playing = 0;
+        }
+    }
+    if (buttons == 0b1011)
+    { // stop
+        inputs = 3;
+        paused = 1;
+        playing = 0;
+        stopped = 1;
+    }
+    if (buttons == 0b0111)
+    { // prev
+        inputs = 4;
+        prev = 1;
+        stopped = 1;
+    }
     // start the timer
     IOWR(TIMER_0_BASE, 1, 0b0111);
 
@@ -90,7 +125,6 @@ static void timer_ISR(void *context, alt_u32 id)
 
     // re-enable button irq
     IOWR(BUTTON_PIO_BASE, 2, 0xf);
-    printf("timer isr hit \n");
     // clear timer TO
     IOWR(TIMER_0_BASE, 0, 0x0);
     IOWR(TIMER_0_BASE, 1, 0b1011);
@@ -347,6 +381,17 @@ int play(int index, char *fname, unsigned long p1, alt_up_audio_dev *audio_dev)
             // Regular speed
             while (pos < s2)
             {
+                // do not play while paused
+                while (paused)
+                {
+                };
+
+                // if stopped (interrupted), return
+                if (stopped)
+                {
+                    return 0;
+                }
+
                 int fifospace = alt_up_audio_write_fifo_space(audio_dev, ALT_UP_AUDIO_RIGHT);
                 if (fifospace > 0)
                 {
@@ -363,6 +408,15 @@ int play(int index, char *fname, unsigned long p1, alt_up_audio_dev *audio_dev)
             // Half speed
             while (pos < s2)
             {
+                // do not play while paused
+                while (paused)
+                {
+                };
+                if (stopped)
+                {
+                    return 0;
+                }
+
                 int fifospace = alt_up_audio_write_fifo_space(audio_dev, ALT_UP_AUDIO_RIGHT);
                 if (fifospace > 0)
                 {
@@ -383,6 +437,15 @@ int play(int index, char *fname, unsigned long p1, alt_up_audio_dev *audio_dev)
             // Double speed
             while (pos < s2)
             {
+                // do not play while paused
+                while (paused)
+                {
+                };
+                if (stopped)
+                {
+                    return 0;
+                }
+
                 int fifospace = alt_up_audio_write_fifo_space(audio_dev, ALT_UP_AUDIO_RIGHT);
                 if (fifospace > 0)
                 {
@@ -399,6 +462,15 @@ int play(int index, char *fname, unsigned long p1, alt_up_audio_dev *audio_dev)
             // Mono - Left OR Right only played on both channels
             while (pos < s2)
             {
+                // do not play while paused
+                while (paused)
+                {
+                };
+                if (stopped)
+                {
+                    return 0;
+                }
+
                 int fifospace = alt_up_audio_write_fifo_space(audio_dev, ALT_UP_AUDIO_RIGHT);
                 if (fifospace > 0)
                 {

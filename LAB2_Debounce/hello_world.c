@@ -27,8 +27,21 @@ static void button_ISR(void *context, alt_u32 id)
   // disable button interrupts
   static int counter = 0;
   IOWR(BUTTON_PIO_BASE, 2, 0x0);
+  int buttons = IORD(BUTTON_PIO_BASE, 0);
   IOWR(TIMER_0_BASE, 1, 0b0111);
-  printf("button hit %d\n", counter);
+  if (buttons == 0b1110) {
+	  printf("1\n");
+  }
+  if (buttons == 0b1101) {
+	  printf("2\n");
+  }
+  if (buttons == 0b1011) {
+	  printf("3\n");
+  }
+  if (buttons == 0b0111) {
+	  printf("4\n");
+  }
+  printf("button hit %d %d\n", counter, buttons);
   counter += 1;
   IOWR(BUTTON_PIO_BASE, 3, 0x0);
   //   clear interrupt
