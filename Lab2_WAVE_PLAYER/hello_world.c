@@ -683,7 +683,6 @@ int main()
         play(track_num, &fnames[track_num][0], lengths[track_num], audio_dev);
         while (playing)
         {
-            printf("continue playing?");
             stopped = 0;
             paused = 0;
             if (next)
