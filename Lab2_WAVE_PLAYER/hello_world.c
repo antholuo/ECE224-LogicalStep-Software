@@ -69,11 +69,10 @@ typedef struct wav_file
 } WAV_FILE;
 
 // a bunch of defs
-uint8_t playing, stopped, paused, half_speed, double_speed, stereo, mono, next, prev;
+uint8_t playing, stopped, paused, next, prev;
 int inputs = 0;
 int track_num;
-
-int once_count = 1;
+int speed = 2; // 2 = norm, 3 = half, 4 = double, 5 = mono
 
 static alt_alarm alarm;
 static unsigned long Systick = 0;
@@ -96,17 +95,21 @@ static void button_ISR(void *context, alt_u32 id)
         inputs = 2;
         if (paused)
         {
+            display(track_num, speed);
             paused = 0;
             playing = 1;
         }
         else
         {
+            display(track_num, PAUSED);
             paused = 1;
             playing = 0;
         }
     }
     if (buttons == 0b1011)
     { // stop
+        display(track_num, STOPPED);
+        printf("stopped\n");
         inputs = 3;
         stopped = 1;
     }
@@ -329,7 +332,7 @@ int display(int index, int mode)
         }
         else if (mode == PAUSED)
         {
-            fprintf(lcd, "PAUESD\n");
+            fprintf(lcd, "PAUSED\n");
         }
         else if (mode == PBACK_NORM)
         {
@@ -383,15 +386,19 @@ int play(int index, char *fname, unsigned long p1, alt_up_audio_dev *audio_dev)
     {
     case 0:
         display(index, PBACK_NORM);
+        speed = PBACK_NORM;
         break;
     case 1:
         display(index, PBACK_HALF);
+        speed = PBACK_HALF;
         break;
     case 2:
         display(index, PBACK_DBL);
+        speed = PBACK_DBL;
         break;
     case 3:
         display(index, PBACK_MONO);
+        speed = PBACK_MONO;
         break;
     }
 
@@ -629,7 +636,8 @@ int main()
     for (track_num = 0; track_num < num_wav_files; track_num++)
     {
         xprintf("file %d: %s, length: %lu\n", track_num, &fnames[track_num][0], lengths[track_num]);
-        play(i, &fnames[track_num][0], lengths[track_num], audio_dev);
+        play(track_num, &fnames[track_num][0], lengths[track_num], audio_dev);
+        while(paused) {};
     }
 
     return 0;
