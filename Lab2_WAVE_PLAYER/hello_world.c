@@ -52,6 +52,13 @@
 #define ESC 27
 #define CLEAR_LCD_STR "[2J"
 
+#define STOPPED 0
+#define PAUSED 1
+#define PBACK_NORM 2
+#define PBACK_HALF 3
+#define PBACK_DBL 4
+#define PBACK_MONO 5
+
 #define PSTR(_a) _a
 
 typedef struct wav_file
@@ -62,9 +69,11 @@ typedef struct wav_file
 } WAV_FILE;
 
 // a bunch of defs
-uint8_t playing, stopped, paused, half_speed, double_speed, stereo, mono, next, previous;
+uint8_t playing, stopped, paused, half_speed, double_speed, stereo, mono, next, prev;
 int inputs = 0;
 int track_num;
+
+int once_count = 1;
 
 static alt_alarm alarm;
 static unsigned long Systick = 0;
@@ -99,8 +108,6 @@ static void button_ISR(void *context, alt_u32 id)
     if (buttons == 0b1011)
     { // stop
         inputs = 3;
-        paused = 1;
-        playing = 0;
         stopped = 1;
     }
     if (buttons == 0b0111)
@@ -316,6 +323,30 @@ int display(int index, int mode)
     {
         fprintf(lcd, "%c%s", ESC, CLEAR_LCD_STR);
         fprintf(lcd, "%d: %s\n", entry_nums[index], first_line);
+        if (mode == STOPPED)
+        {
+            fprintf(lcd, "STOPPED\n");
+        }
+        else if (mode == PAUSED)
+        {
+            fprintf(lcd, "PAUESD\n");
+        }
+        else if (mode == PBACK_NORM)
+        {
+            fprintf(lcd, "PBACK-NORM SPD\n");
+        }
+        else if (mode == PBACK_HALF)
+        {
+            fprintf(lcd, "PBACK-HALF SPD\n");
+        }
+        else if (mode == PBACK_DBL)
+        {
+            fprintf(lcd, "PBACK-DBL SPD\n");
+        }
+        else if (mode == PBACK_MONO)
+        {
+            fprintf(lcd, "PBACK-MONO\n");
+        }
     }
 
     fclose(lcd);
@@ -339,8 +370,6 @@ int play(int index, char *fname, unsigned long p1, alt_up_audio_dev *audio_dev)
     // open file
     f_open(&File1, fname, (uint8_t)FOPEN_MODE);
 
-    display(index, 0);
-
     ofs = File1.fptr;
     unsigned int bytes_read = 0;
     res = f_read(&File1, Buff, DATA_OFFSET, &s2);
@@ -350,6 +379,21 @@ int play(int index, char *fname, unsigned long p1, alt_up_audio_dev *audio_dev)
 
     int switches = IORD(SWITCH_PIO_BASE, 0x0);
     switches &= 3;
+    switch (switches)
+    {
+    case 0:
+        display(index, PBACK_NORM);
+        break;
+    case 1:
+        display(index, PBACK_HALF);
+        break;
+    case 2:
+        display(index, PBACK_DBL);
+        break;
+    case 3:
+        display(index, PBACK_MONO);
+        break;
+    }
 
     while (bytes_read < p1)
     {
@@ -378,17 +422,28 @@ int play(int index, char *fname, unsigned long p1, alt_up_audio_dev *audio_dev)
         switch (switches)
         {
         case 0:
+            // display(index, PBACK_NORM);
             // Regular speed
             while (pos < s2)
             {
                 // do not play while paused
                 while (paused)
                 {
+                    if (stopped)
+                    {
+                        stopped = 0;
+                        playing = 0;
+                        paused = 1;
+                        return 0;
+                    }
                 };
 
                 // if stopped (interrupted), return
                 if (stopped)
                 {
+                    stopped = 0;
+                    playing = 0;
+                    paused = 1;
                     return 0;
                 }
 
@@ -406,14 +461,25 @@ int play(int index, char *fname, unsigned long p1, alt_up_audio_dev *audio_dev)
             break;
         case 1:
             // Half speed
+            // display(index, PBACK_HALF);
             while (pos < s2)
             {
                 // do not play while paused
                 while (paused)
                 {
+                    if (stopped)
+                    {
+                        stopped = 0;
+                        playing = 0;
+                        paused = 1;
+                        return 0;
+                    }
                 };
                 if (stopped)
                 {
+                    stopped = 0;
+                    playing = 0;
+                    paused = 1;
                     return 0;
                 }
 
@@ -435,14 +501,25 @@ int play(int index, char *fname, unsigned long p1, alt_up_audio_dev *audio_dev)
             break;
         case 2:
             // Double speed
+            // display(index, PBACK_DBL);
             while (pos < s2)
             {
                 // do not play while paused
                 while (paused)
                 {
+                    if (stopped)
+                    {
+                        stopped = 0;
+                        playing = 0;
+                        paused = 1;
+                        return 0;
+                    }
                 };
                 if (stopped)
                 {
+                    stopped = 0;
+                    playing = 0;
+                    paused = 1;
                     return 0;
                 }
 
@@ -460,14 +537,25 @@ int play(int index, char *fname, unsigned long p1, alt_up_audio_dev *audio_dev)
             break;
         case 3:
             // Mono - Left OR Right only played on both channels
+            // display(index, PBACK_MONO);
             while (pos < s2)
             {
                 // do not play while paused
                 while (paused)
                 {
+                    if (stopped)
+                    {
+                        stopped = 0;
+                        playing = 0;
+                        paused = 1;
+                        return 0;
+                    }
                 };
                 if (stopped)
                 {
+                    stopped = 0;
+                    playing = 0;
+                    paused = 1;
                     return 0;
                 }
 
@@ -538,10 +626,10 @@ int main()
     xprintf("total of %d wav files found.\n", num_wav_files);
 
     int i;
-    for (i = 0; i < num_wav_files; i++)
+    for (track_num = 0; track_num < num_wav_files; track_num++)
     {
-        xprintf("file %d: %s, length: %lu\n", i, &fnames[i][0], lengths[i]);
-        play(i, &fnames[i][0], lengths[i], audio_dev);
+        xprintf("file %d: %s, length: %lu\n", track_num, &fnames[track_num][0], lengths[track_num]);
+        play(i, &fnames[track_num][0], lengths[track_num], audio_dev);
     }
 
     return 0;
